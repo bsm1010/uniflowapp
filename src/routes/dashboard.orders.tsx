@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Search, ShoppingBag, Phone, MapPin } from "lucide-react";
+import { Loader2, Search, ShoppingBag, Phone, MapPin, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +9,7 @@ import { PageHeader, EmptyState } from "@/components/dashboard/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,72 @@ const STATUS_VARIANT: Record<string, { label: string; className: string }> = {
       "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30",
   },
 };
+
+function exportToCSV(orders: Order[], items: Record<string, OrderItem[]>) {
+  const rows: string[][] = [];
+
+  // Header
+  rows.push([
+    "Order ID",
+    "Date",
+    "Customer Name",
+    "Phone",
+    "Wilaya",
+    "City",
+    "Product",
+    "Quantity",
+    "Status",
+    "Total (DA)",
+  ]);
+
+  for (const o of orders) {
+    const orderItems = items[o.id] ?? [];
+    if (orderItems.length === 0) {
+      rows.push([
+        o.id.slice(0, 8).toUpperCase(),
+        new Date(o.created_at).toLocaleDateString(),
+        o.customer_name,
+        o.shipping_address,
+        o.shipping_postal_code || "",
+        o.shipping_city,
+        "",
+        "",
+        STATUS_VARIANT[o.status]?.label ?? o.status,
+        Number(o.total).toFixed(2),
+      ]);
+    } else {
+      orderItems.forEach((item, idx) => {
+        rows.push([
+          idx === 0 ? o.id.slice(0, 8).toUpperCase() : "",
+          idx === 0 ? new Date(o.created_at).toLocaleDateString() : "",
+          idx === 0 ? o.customer_name : "",
+          idx === 0 ? o.shipping_address : "",
+          idx === 0 ? o.shipping_postal_code || "" : "",
+          idx === 0 ? o.shipping_city : "",
+          item.product_name,
+          String(item.quantity),
+          idx === 0 ? STATUS_VARIANT[o.status]?.label ?? o.status : "",
+          idx === 0 ? Number(o.total).toFixed(2) : "",
+        ]);
+      });
+    }
+  }
+
+  const csv = rows
+    .map((row) =>
+      row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
+    )
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast.success("Orders exported successfully!");
+}
 
 function OrdersPage() {
   const { user } = useAuth();
@@ -198,6 +265,15 @@ function OrdersPage() {
               <div className="text-xs text-muted-foreground">
                 {filtered.length} of {orders.length}
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToCSV(filtered, items)}
+                disabled={filtered.length === 0}
+              >
+                <Download className="h-4 w-4 mr-1.5" />
+                Export CSV
+              </Button>
             </div>
             <div className="overflow-x-auto">
               <Table>
@@ -230,7 +306,7 @@ function OrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <a
+                          
                             href={`tel:${o.shipping_address}`}
                             className="inline-flex items-center gap-1.5 text-sm hover:text-primary"
                           >
